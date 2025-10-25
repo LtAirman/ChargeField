@@ -1,0 +1,1476 @@
+import sys
+import os
+import bpy
+import random
+import numpy as np
+import math
+import mathutils
+
+# AtomicData.py is in a separate scripting editor tab, in the
+# same folder as the blender python file
+# The sys path needs to be amended with this woking directory.
+
+blend_file_dir = os.path.dirname(bpy.data.filepath)
+if blend_file_dir not in sys.path:
+    sys.path.append(blend_file_dir)
+
+#Allowing the script to locate related resources, 
+#even if Blender was launched from a different location.  
+#print(f"Directory of the blend file: {blend_file_dir}") # Good
+
+from AtomicData import atomic_data
+# Contains the data to build atoms from stacks. 
+
+# The three particle sizes
+p_radius = 1.0  # proton radius
+e_radius = 0.2  # electron radius
+n_radius = 1.2  # neutron radius
+e_locz = 1.2  # electron z position above or below a proton pole
+n_locz = 3.0  # neutron z position above or below a proton pole
+gap = 8
+
+spin_mat_r = bpy.data.materials.new('RSpin')
+spin_mat_r.diffuse_color = (1.0, 0.0, 0.0, 1.0)
+spin_mat_l = bpy.data.materials.new('LSpin')
+spin_mat_l.diffuse_color = (0.0, 0.0, 1.0, 1.0)
+emission_mat = bpy.data.materials.new('Emission')
+emission_mat.diffuse_color = (1.0, 1.0, 1.0, 1.0)
+text_mat = bpy.data.materials.new('Text')
+text_mat.diffuse_color = (1.0, 1.0, 1.0, 0.0)
+text_mat_black = bpy.data.materials.new('Text')
+text_mat_black.diffuse_color = (0.0, 0.0, 0.0, 1.0)
+neutron_mat = bpy.data.materials.new('NeuMat') 
+neutron_mat.diffuse_color = (0.0, 1.0, 0.0, 1.0)   # Green
+
+# =============================
+# Component creator functions
+# =============================
+
+def add_proton(loc_x=0, loc_y=0, loc_z=0, type='BL', spin_mat=spin_mat_l):
+    '''The proton'''
+    #print('type = ', type)    
+    bpy.ops.object.select_all(action='DESELECT')
+    # Create the proton sphere
+    bpy.ops.mesh.primitive_uv_sphere_add(radius = p_radius, location=(loc_x, loc_y, loc_z))
+    proton = bpy.context.active_object
+    bpy.ops.object.shade_smooth()
+    if spin_mat:
+        proton.data.materials.append(spin_mat)
+    # Create X-axis spin marker ring
+    bpy.ops.mesh.primitive_torus_add(major_radius=p_radius, minor_radius=p_radius/30, location=(loc_x, loc_y, loc_z))
+    ring_x = bpy.context.active_object
+    ring_x.rotation_euler[0] = 1.5708
+    ring_x.data.materials.append(emission_mat)
+    # Create Y-axis spin marker ring
+    bpy.ops.mesh.primitive_torus_add(major_radius=p_radius, minor_radius=p_radius/30, location=(loc_x, loc_y, loc_z))
+    ring_y = bpy.context.active_object
+    ring_y.rotation_euler[1] = 1.5708
+    ring_y.data.materials.append(emission_mat)
+    # Join all into one object
+    bpy.context.view_layer.objects.active = proton
+    proton.select_set(True)
+    ring_x.select_set(True)
+    ring_y.select_set(True)
+    bpy.ops.object.join()
+    return bpy.context.active_object
+
+def add_electron(loc_x=0, loc_y=0, loc_z=0, eloc_z=-e_locz, type='BL', spin_mat=spin_mat_l): 
+    bpy.ops.object.select_all(action='DESELECT')
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=e_radius, location=(loc_x, loc_y, loc_z + eloc_z))
+    electron = bpy.context.active_object
+    bpy.ops.object.shade_smooth()
+    if spin_mat:
+        electron.data.materials.append(spin_mat)
+    # Create X-axis spin ring
+    bpy.ops.mesh.primitive_torus_add(major_radius=e_radius, minor_radius=e_radius/10, location=(loc_x, loc_y, loc_z + eloc_z))
+    ring_x = bpy.context.active_object
+    ring_x.rotation_euler[0] = 1.5708
+    ring_x.data.materials.append(emission_mat)
+    # Create Y-axis spin ring
+    bpy.ops.mesh.primitive_torus_add(major_radius=e_radius, minor_radius=e_radius/10, location=(loc_x, loc_y, loc_z + eloc_z))
+    ring_y = bpy.context.active_object
+    ring_y.rotation_euler[1] = 1.5708
+    ring_y.data.materials.append(emission_mat)
+    # Join all into one object
+    bpy.context.view_layer.objects.active = electron
+    electron.select_set(True)
+    ring_x.select_set(True)
+    ring_y.select_set(True)
+    bpy.ops.object.join()
+    return bpy.context.active_object  
+
+def add_neutron(loc_x=0, loc_y=0, loc_z=0, nloc_z=n_locz, type='BL', spin_mat=spin_mat_l): 
+    bpy.ops.object.select_all(action='DESELECT')
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=n_radius, location=(loc_x, loc_y, loc_z + nloc_z))
+    neutron = bpy.context.active_object
+    bpy.ops.object.shade_smooth()
+    if spin_mat:
+        #neutron.data.materials.append(spin_mat)
+        neutron.data.materials.append(neutron_mat)
+    # Create X-axis spin ring
+    bpy.ops.mesh.primitive_torus_add(major_radius=n_radius, minor_radius=n_radius/30, location=(loc_x, loc_y, loc_z + nloc_z))
+    ring_x = bpy.context.active_object
+    ring_x.rotation_euler[0] = 1.5708
+    ring_x.data.materials.append(emission_mat)
+    # Create Y-axis spin ring
+    
+    bpy.ops.mesh.primitive_torus_add(major_radius=n_radius, minor_radius=n_radius/30, location=(loc_x, loc_y, loc_z + nloc_z))
+    ring_y = bpy.context.active_object
+    ring_y.rotation_euler[1] = 1.5708
+    ring_y.data.materials.append(emission_mat)
+    # Join all into one object
+    bpy.context.view_layer.objects.active = neutron
+    neutron.select_set(True)
+    ring_x.select_set(True)
+    ring_y.select_set(True)
+    bpy.ops.object.join()
+    return bpy.context.active_object   
+
+def add_emission(loc_x, loc_y, loc_z): 
+    '''The proton's equatorial emissions'''                        
+    bpy.ops.mesh.primitive_cylinder_add(radius=3, depth=0.05, location=(loc_x, loc_y, loc_z))
+    return bpy.context.active_object
+
+def add_thrucharge(loc_x, loc_y, loc_z, x_coef=1, z_coef=1):
+    '''The proton's main pole-to-pole thru charge channel extending beyond the proton pole'''
+    bpy.ops.mesh.primitive_cylinder_add(radius=0.05, depth=3.25,location=(loc_x, loc_y, loc_z))
+    obj = bpy.context.active_object
+    return bpy.context.active_object
+
+def add_intake(loc_x, loc_y, loc_z, x_coef=1, z_coef=1):
+    '''The proton's main spiral charge intake into the electron vacant proton pole'''
+    # type:+/- coef_x, +/- coef_z. BL:+x,+z; TL:+x,-z; BR:-x,+z; TR:-x,-z.
+    # Set time 't' axis
+    t = np.arange(1.05, 5, 0.01)
+    # Set curve coordinates
+    points = np.zeros((len(t), 3))
+    offset = 0 
+    for N in range(len(t)):
+        if z_coef>0:   # BL and BR
+            offset = -2.1# found by trial and error Original
+        if z_coef<0:   # TL and TR
+            offset = 2.1        
+        x = x_coef*0.32*(1 - t[N]) * np.cos(5 * t[N])
+        y = 0.32*(1 - t[N]) * np.sin(5 * t[N])
+        z = offset + z_coef*0.7*t[N]  # Slightly expanded from 0.6 to 0.7.
+        points[N] = [x, y, z]
+    # Create the curve and set its points
+    curve_data = bpy.data.curves.new(name='ParametricLine', type='CURVE')
+    polyline = curve_data.splines.new('POLY')
+    polyline.points.add(len(points) - 1)
+    for N in range(len(points)):
+        x, y, z = points[N]
+        polyline.points[N].co = (x, y, z, 1)
+    curve_object = bpy.data.objects.new('ParametricLine', curve_data)
+    bpy.context.collection.objects.link(curve_object)
+    # Make the spiral the active object.
+    # Deselect all objects first
+    bpy.ops.object.select_all(action='DESELECT')
+    obj = bpy.data.objects.get('ParametricLine')
+    if obj:
+        obj.select_set(True)  # Select the object
+        bpy.context.view_layer.objects.active = obj  # Set it as the active object
+    # Give the curve thickness
+    obj.data.bevel_depth = 0.05
+    # Convert the curve into a mesh.
+    bpy.ops.object.convert(target='MESH') 
+    obj.location=(loc_x, loc_y, loc_z)
+    # Offset the intake so its small end is at the proton's  
+    min_z = min([v.co.z for v in obj.data.vertices])
+    max_z = max([v.co.z for v in obj.data.vertices])
+    # Move the intake so min_z aligns with loc_z (proton center)
+    #obj.location.z -= min_z plus offset by the proton radius. 
+    if z_coef>0:   # BL and BR   
+        obj.location.z -= min_z - 1 
+        #obj.location.z += min_z # worth a look
+        #obj.location.z -= min_z + 4 
+    if z_coef<0:   # TL and TR        
+        obj.location.z -= max_z + 1 
+        #obj.location.z -= max_z  
+        #obj.location.z -= max_z -4    
+    #print('obj.location.z = ', obj.location.z)
+    return bpy.context.active_object
+
+# =============================
+# Proton group creator functions
+# =============================
+
+def add_pro_neu_elec_emission_intake(loc_x, loc_y, loc_z, eloc_z=-e_locz, incl_neutron = False, nloc_z=n_locz, type = 'BL', spin_mat = spin_mat_l, x_coef=1, z_coef=1):
+    # Add the proton group objects and their animation spin drivers
+    spin_dir = "L" if spin_mat == spin_mat_l else "R"
+    collection_name = f"{type}_Collection"
+    My_collection = bpy.data.collections.new(collection_name)    
+    bpy.context.scene.collection.children.link(My_collection)
+    # Add proton
+    proton_angle = random.uniform(0, 2 * math.pi)
+    px = math.cos(proton_angle)
+    py = math.sin(proton_angle)
+    pz = loc_z
+    proton = add_proton(loc_x, loc_y, loc_z, type, spin_mat)
+    #proton = add_proton(px, py, pz, type, spin_mat)
+    proton.rotation_euler[2] = random.uniform(0, 6.2832)  # Random z rotation (0 to 2pi)
+    # The randon proton rotation here will apply to every instance of that collection. 
+    # Four instance types -- there are only four groups.  
+    proton.name = f"{type}proton"
+    proton.data.name = f"{type}proton"
+    My_collection.objects.link(proton)
+    # Add proton's axial spin driver - spinning all the proton's children.
+    add_continuous_rotation(proton, axis_index=2, speed=0.1, spin_dir=spin_dir)
+    # Add neutron
+    if incl_neutron == True: 
+        # Add orbital empty at proton center, parented to proton and parent to the neutron
+        bpy.ops.object.empty_add(type='PLAIN_AXES', radius=0.75, location=(loc_x, loc_y, loc_z))
+        #bpy.ops.object.empty_add(type='PLAIN_AXES', radius=1.00, location=(rand_x, rand_y, rand_z))
+        norbit_empty = bpy.context.active_object
+        norbit_empty.rotation_euler[2] = random.uniform(0, 6.2832)  # Random z rotation (0 to 2pi)
+        norbit_empty.name = f"{type}orbit"
+        norbit_empty.parent = proton
+        My_collection.objects.link(norbit_empty) 
+        neutron_angle = random.uniform(0, 2 * math.pi)
+        nx = n_radius * 1.75 * math.cos(neutron_angle)
+        ny = n_radius * 1.75 * math.sin(neutron_angle) 
+        nz = nloc_z
+        neutron = add_neutron(nx, ny, nz, nloc_z=0, type=type, spin_mat=spin_mat)
+        neutron.rotation_euler[2] = random.uniform(0, 6.2832)
+        neutron.name = f"{type}neutron"
+        neutron.data.name = f"{type}neutron"
+        neutron.parent = norbit_empty
+        My_collection.objects.link(neutron)
+        # Add drivers for neutron axial spin and orbital rotation
+        add_continuous_rotation(neutron, axis_index=2, speed=0.05, spin_dir=spin_dir)
+        add_continuous_rotation(norbit_empty, axis_index=2, speed=-0.025, spin_dir=spin_dir)
+    # Add electron 
+    # Add orbital empty at proton center, parented to proton and parent to the electron
+    bpy.ops.object.empty_add(type='PLAIN_AXES', radius=0.75, location=(loc_x, loc_y, loc_z))
+    #bpy.ops.object.empty_add(type='PLAIN_AXES', radius=1.00, location=(rand_x, rand_y, rand_z))
+    eorbit_empty = bpy.context.active_object
+    eorbit_empty.rotation_euler[2] = random.uniform(0, 6.2832)  # Random z rotation (0 to 2pi)
+    eorbit_empty.name = f"{type}orbit"
+    eorbit_empty.parent = proton
+    My_collection.objects.link(eorbit_empty)
+    # --- Add randomness to electron orbital radius and angle ---
+    # Location randomness is not needed yet, included for possible future alternative 
+    #electron_radius = 0.25 + random.uniform(0, 0.25)
+    #electron_radius = 0.25 
+    electron_angle = random.uniform(0, 2 * math.pi)
+    #ex = rand_x + electron_radius * math.cos(electron_angle)
+    #ey = rand_y + electron_radius * math.sin(electron_angle)
+    #ez = rand_z + eloc_z
+    ex = e_radius * math.cos(electron_angle)
+    ey = e_radius * math.sin(electron_angle)
+    ez = eloc_z
+    electron = add_electron(ex, ey, ez, eloc_z=0, type=type, spin_mat=spin_mat)
+    electron.rotation_euler[2] = random.uniform(0, 6.2832)
+    electron.name = f"{type}electron"
+    electron.data.name = f"{type}electron"
+    electron.parent = eorbit_empty
+    My_collection.objects.link(electron)
+    # Add drivers for electron axial spin and orbital rotation
+    add_continuous_rotation(electron, axis_index=2, speed=0.2, spin_dir=spin_dir)
+    add_continuous_rotation(eorbit_empty, axis_index=2, speed=0.15, spin_dir=spin_dir)
+    # Add emission
+    emission = add_emission(loc_x, loc_y, loc_z)
+    emission.name = f"{type}emission"
+    emission.data.name = f"{type}emission"
+    emission.data.materials.append(emission_mat)
+    emission.parent = proton    
+    My_collection.objects.link(emission)
+    # 'Spin' the emission at negative proton speed.
+    add_continuous_rotation(emission, axis_index=2, speed=-0.1, spin_dir=spin_dir)
+    # Add thrucharge
+    #thrucharge = add_thrucharge(loc_x, loc_y, c_loc_z, type='BL', spin_mat=spin_mat_l)
+    thrucharge = add_thrucharge(loc_x, loc_y, loc_z) 
+    # Trying to slide the beam down or up for the two vertically adjacent B and T protons
+    if type == 'BL': 
+        end = -2.25
+    if type == 'BR': 
+        end = -2.25
+    if type == 'TL': 
+        end = 2.25
+    if type == 'TR': 
+        end = 2.25
+    bpy.ops.transform.translate(value=(0, 0, end))
+    thrucharge.name = f"{type}thrucharge"
+    thrucharge.data.name = f"{type}thrucharge"
+    thrucharge.data.materials.append(spin_mat)
+    thrucharge.parent = proton    
+    My_collection.objects.link(thrucharge)
+    # 'Spin' the emission at negative proton speed.
+    add_continuous_rotation(thrucharge, axis_index=2, speed=-0.1, spin_dir=spin_dir)   
+    #bpy.ops.object.select_all(action='DESELECT')
+    # Add intake # 
+    # Add intake_empty at proton center, parented to proton
+    bpy.ops.object.empty_add(type='PLAIN_AXES', radius=0.75, location=(loc_x, loc_y, loc_z))
+    #bpy.ops.object.empty_add(type='PLAIN_AXES', radius=1.00, location=(rand_x, rand_y, rand_z))
+    intake_empty = bpy.context.active_object
+    intake_empty.rotation_euler[2] = random.uniform(0, 6.2832)  # Random z rotation (0 to 2pi)
+    intake_empty.name = f"{type}orbit"
+    intake_empty.parent = proton
+    My_collection.objects.link(intake_empty)
+    intake_angle = random.uniform(0, 2 * math.pi) ### making the random more obvious
+    intake = add_intake(loc_x, loc_y, loc_z, x_coef, z_coef)
+    intake.rotation_euler[2] = intake_angle  # random intake strating angle, only four.
+    intake.name = f"{type}intake"
+    intake.data.name = f"{type}intake"
+    intake.data.materials.append(spin_mat)
+    intake.parent = intake_empty
+    My_collection.objects.link(intake)
+    add_continuous_rotation(intake_empty, axis_index=2, speed=0.05, spin_dir=spin_dir)
+    bpy.ops.object.select_all(action='DESELECT')
+    return
+
+class ProtonGroup:
+    def __init__(self, group_type, loc_x=0.0, loc_y=0.0, loc_z=0.0):
+        self.group_type = group_type.upper()
+        self.loc_x = loc_x
+        self.loc_y = loc_y
+        self.loc_z = loc_z
+        # Set parameters based on group type
+        if self.group_type == 'TL':
+            self.eloc_z = e_locz
+            self.nloc_z = -n_locz
+            self.spin_mat = spin_mat_l
+            self.x_coef = 1
+            self.z_coef = -1
+        elif self.group_type == 'BL':
+            self.eloc_z = -e_locz
+            self.nloc_z = n_locz
+            self.spin_mat = spin_mat_l
+            self.x_coef = 1
+            self.z_coef = 1
+        elif self.group_type == 'TR':
+            self.eloc_z = e_locz
+            self.nloc_z = -n_locz
+            self.spin_mat = spin_mat_r
+            self.x_coef = -1
+            self.z_coef = -1
+        elif self.group_type == 'BR':
+            self.eloc_z = -e_locz
+            self.nloc_z = n_locz
+            self.spin_mat = spin_mat_r
+            self.x_coef = -1
+            self.z_coef = 1
+        else:
+            raise ValueError(f"Unknown group type: {self.group_type}")
+
+    def build(self, incl_neutron=True):
+        add_pro_neu_elec_emission_intake(
+            self.loc_x, self.loc_y, self.loc_z,
+            eloc_z=self.eloc_z,
+            nloc_z=self.nloc_z,
+            type=self.group_type,
+            spin_mat=self.spin_mat,
+            x_coef=self.x_coef,
+            z_coef=self.z_coef,
+            incl_neutron=incl_neutron)
+        return bpy.context.active_object
+
+# =============================
+# Proton Instance creator functions
+# =============================
+
+def select_collection_objects(collection_name):
+    collection = bpy.data.collections.get(collection_name)
+    if collection:
+        for obj in collection.objects:
+            obj.select_set(True)
+    return          
+
+def relocate_collection(loc_x=0.0, loc_y=0.0, loc_z=0.0, collection_name="BL_Collection", type='BL', spin_dir="L"):
+    my_collection = bpy.data.collections.get(collection_name)
+    if my_collection:
+        # Find the proton object in the collection
+        proton_obj = None
+        for obj in my_collection.objects:
+            if obj.name.endswith("proton"):
+                proton_obj = obj
+                break
+        if proton_obj:
+            # Move the proton (parent) to the new location
+            proton_obj.location = (loc_x, loc_y, loc_z)
+            bpy.context.view_layer.objects.active = proton_obj
+            proton_obj.select_set(True)
+        else:
+            print(f"No proton found in collection '{collection_name}'.")
+    else:
+        print(f"Collection '{collection_name}' not found.")
+    return
+        
+def instance_collection(collection, location, instance_name):
+    # Create a collection instance
+    empty = bpy.data.objects.new(name=instance_name, object_data=None)
+    empty.instance_type = 'COLLECTION'
+    empty.instance_collection = collection
+    empty.location = location
+    #bpy.ops.object.origin_set(type='GEOMETRY_ORIGIN', center='MEDIAN') # Crushed charge intakes
+    bpy.context.scene.collection.objects.link(empty)
+    # The next line relocates the group to their empties,
+    bpy.ops.object.select_all(action='SELECT') # Brings instance objects to inst empties
+    # That is not true now. All objects are selected. The 4 relocated collections look good 
+    # all instance objects are offset from their correctly positioned empties.  
+    bpy.ops.object.origin_set(type='GEOMETRY_ORIGIN', center='MEDIAN')
+    #bpy.ops.object.origin_set(type='GEOMETRY_ORIGIN', center='BOUNDS') 
+    return empty  # Return the instance object so build_all_stacks can randomize it.
+
+def relocate_instance(instance_objects="BL_Collection_instance", type='BL', spin_dir="L"):
+    obj = bpy.data.objects.get(instance_objects)
+    #bpy.ops.object.origin_set(type='GEOMETRY_ORIGIN', center='MEDIAN')
+    if obj:
+        # Set the location directly instead of using bpy.ops.transform.translate
+        #bpy.ops.object.origin_set(type='GEOMETRY_ORIGIN', center='MEDIAN')
+        if type=='BL':
+            obj.location = (-2*gap, -gap/2, 0.8-gap/2)
+            #bpy.ops.object.origin_set(type='GEOMETRY_ORIGIN', center='MEDIAN')
+            #obj.location = (-2*gap, -gap/2, 0.8-gap/2)
+        elif type=='TL':
+            obj.location = (-2*gap, -gap/2, -0.8+gap/2)
+        elif type=='TR':
+            obj.location = (-2*gap, gap/2, -0.8+gap/2)
+        elif type=='BR':
+            obj.location = (-2*gap, gap/2, 0.8-gap/2)
+        bpy.ops.object.select_all(action='DESELECT')
+        #bpy.ops.object.origin_set(type='GEOMETRY_ORIGIN', center='MEDIAN')
+    return
+
+# Creating an Atom class, with the goal of building molecules
+# Represents a single atom, with all its slots, stacks, and metadata.
+# Knows its own possible bonding sites (extremities).
+# Can expose methods for checking and forming bonds.
+# Possible Structure:
+class Atom:
+    def __init__(self, element_symbol, loc_x=0.0, loc_y=0.0, loc_z=0.0, scale=1.0):
+        self.symbol = element_symbol
+        self.data = atomic_data[element_symbol]
+        self.location = (loc_x, loc_y, loc_z)
+        self.scale = scale
+        self.stacks = []  # List of AtomicStack objects
+        self.build_stacks()
+
+    def build_stacks(self):
+        for slot in self.data["slots"]:
+            stack = AtomicStack(
+                slot=slot["slot"],
+                protons=slot["protons"],
+                px=self.location[0] + slot["px"] * self.scale,
+                py=self.location[1] + slot["py"] * self.scale,
+                pz=self.location[2] + slot["pz"] * self.scale,
+                orien=slot["orien"],
+                can_bind=slot["can_bind"],
+                stack_num=slot["stack_num"]
+            )
+            self.stacks.append(stack)
+
+    def get_extremities(self):
+        # Return a list of stacks that are at the atom's extremities and can bind
+        return [stack for stack in self.stacks if stack.can_bind == 'Y']
+
+    def visualize(self):
+        for stack in self.stacks:
+            stack.visualize()    
+                    
+
+#B. AtomicStack Class
+# Purpose:
+# Represents a stack (one or more proton groups) in a given slot.
+# Knows its orientation, position, and whether it can bind.
+# Can merge with another stack if bonding rules allow.
+# Possible Structure:         
+class AtomicStack:
+    def __init__(self, slot, protons, px, py, pz, orien, can_bind, stack_num):
+        self.slot = slot
+        self.protons = protons
+        self.position = (px, py, pz)
+        self.orien = orien
+        self.can_bind = can_bind
+        self.stack_num = stack_num
+
+    def visualize(self):
+        # Call your atomic_stack() or similar function here
+        atomic_stack(
+            atom="",
+            slot=self.slot,
+            protons=self.protons,
+            px=self.position[0],
+            py=self.position[1],
+            pz=self.position[2],
+            #p2p3=0.3,  # or whatever is appropriate
+            p2p3=0.6,  # better
+            orien=self.orien,
+            can_bind=self.can_bind,
+            stack_num=self.stack_num
+        )
+
+    def can_bond_with(self, other_stack):
+        # Implement your bonding rules here
+        return self.can_bind == 'Y' and other_stack.can_bind == 'Y'
+
+
+# Takes each single (1-19) slot's data as arguments.
+# Places and orients each slot's stack (from all_stacks) at (px, py, pz) and adds a slot label.
+def atomic_stack(atom, slot, protons, px, py, pz, p2p3, orien, can_bind, stack_num, label_height=3.0):
+    """
+    Place a single atomic stack at the specified coordinates and orientation.
+    """
+    if protons == 0:
+        return None  # Skip empty slots
+    # Get the stack configuration from all_stacks (stack_num is 1-based)
+    
+    # Ensure stack_num is an int
+    if isinstance(stack_num, list):
+        stack_num = stack_num[0]  # or random.choice(stack_num) for variation
+    
+    stack_text, _ = all_stacks[stack_num - 1]  # Errors with H and He
+    #stack_text, _ = all_stacks[int(stack_num - 1)]  
+    # Split stack_text into 2-letter group types
+    group_types = [stack_text[i:i+2] for i in range(0, len(stack_text), 2)]  
+    # Find the correct collection names
+    group_collections = {
+        'TR': 'TR_Collection',
+        'TL': 'TL_Collection',
+        'BR': 'BR_Collection',
+        'BL': 'BL_Collection'}
+    # Place each group in the stack along the stack axis
+    for idx, group_type in enumerate(group_types):
+        collection_name = group_collections.get(group_type)
+        if collection_name is None:
+            print(f"Unknown group: {group_type}")
+            continue
+        # Offset each group along the stack axis. Find the point at which the stack begins. 
+        stackstart = (protons-1)*10*p2p3/2  # The distance fron stack center to end.
+        # starckstart alone has a problem, as T or B type groups overlap by 1. 
+        if orien == 'X':
+            offset = (px - idx * 10 * p2p3 + stackstart, py, pz)
+        elif orien == 'Y':
+            offset = (px, py - idx * 10 * p2p3 + stackstart, pz) 
+        elif orien == 'Z':
+            offset = (px, py, pz - idx * 10 * p2p3 + stackstart)    
+        else:
+            offset = (px, py, pz)
+        instance_name = f"{atom}_Slot{slot}_Group{group_type}_{idx+1}"
+        instance_obj = instance_collection(bpy.data.collections[collection_name], offset, instance_name)
+        # Rotate the instance according to orientation - assuming a z-axis default
+        if instance_obj:
+            if orien == 'X':
+                instance_obj.rotation_euler = (0, math.pi/2, 0)
+            elif orien == 'Y':
+                instance_obj.rotation_euler = (-math.pi/2, 0, 0)
+            elif orien == 'Z':
+                instance_obj.rotation_euler = (0, 0, 0)
+    # Add a 3D label at the stack position (only once per slot)
+    bpy.ops.object.text_add(location=(px, py, pz + label_height)) 
+    text_obj = bpy.context.object
+    text_obj.name = f"{atom}_SlotLabel_{slot}"
+    #text_obj.name = f"{atom}_Stack#{stack_num}"
+    text_obj.data.body = f"{atom} Slot {slot}"
+    #text_obj.data.body = f"S#{stack_num}"
+    text_obj.data.align_x = 'CENTER'
+    text_obj.data.extrude = 0.05
+    text_obj.rotation_euler[0] = math.radians(90)
+    bpy.ops.object.convert(target='MESH')
+    stack_label = bpy.context.active_object
+    stack_label.data.materials.append(text_mat)
+    bpy.ops.object.select_all(action='DESELECT')
+    return 
+
+# Loops through each atom's 1-19 occupied slots and calls atomic_stack() for each:
+# slot_spacing: Spreads out the centers of each stack, preventing overlap 
+# between adjacent orthogonal stacks).
+# p2p3: The distance between adjacent protons within each stack.
+# scale: Overall atom size.
+def build_atom(element_symbol, loc_x=0.0, loc_y=0.0, loc_z=0.0, scale=10.0, slot_spacing=2.0, variant="random"):
+    
+    #quick_Light(origin =(loc_x, loc_y, loc_z))
+    
+    atom = atomic_data[element_symbol]
+
+    for slot in atom["slots"]:
+        stack_nums = slot["stack_num"]
+        if isinstance(stack_nums, list):
+            if variant == "random":
+                stack_num = random.choice(stack_nums)
+            else:
+                stack_num = stack_nums[0]  # or use variant as an index
+        else:
+            stack_num = stack_nums
+        atomic_stack(
+            atom=element_symbol,
+            slot=slot["slot"],
+            protons=slot["protons"],
+            px=loc_x + slot["px"] * scale * slot_spacing,
+            py=loc_y + slot["py"] * scale * slot_spacing,
+            pz=loc_z + slot["pz"] * scale * slot_spacing,
+            p2p3=slot["p2p3"]*2.0,
+            orien=slot["orien"],
+            can_bind=slot["can_bind"],
+            stack_num=slot["stack_num"]
+        ) 
+    return
+        
+def build_all_stacks(stacks, spacing=10, loc_x=0.0, loc_y=0.0, loc_z=0.0):
+    group_collections = {
+        'TR': 'TR_Collection',
+        'TL': 'TL_Collection',
+        'BR': 'BR_Collection',
+        'BL': 'BL_Collection'
+    }
+    spacing = spacing
+    for stack_number, (stack_text, _) in enumerate(stacks):
+        #row = stack_number // 12
+        #col = stack_number % 12
+        row = stack_number // 5
+        col = stack_number % 5
+        base_x = loc_x + 10 + col * spacing 
+        base_y = loc_y + row * spacing
+        group_list = [stack_text[i:i+2] for i in range(0, len(stack_text), 2)]
+        #print(f"Building stack {stack_number + 1} at position ({base_x}, {base_y}) with groups: {group_list}")
+        for level, group in enumerate(group_list):
+            collection_name = group_collections.get(group)
+            if collection_name is None:
+                print(f"Unknown group: {group}")
+                continue
+            z = loc_z -level * spacing
+            instance_name = f"{group}_Stack{stack_number}_Level{level}"
+            print(instance_name)
+            # Create the instance and get the object
+            instance_obj = instance_collection(bpy.data.collections[collection_name], (base_x, base_y, z), instance_name)
+            #bpy.ops.object.origin_set(type='GEOMETRY_ORIGIN', center='MEDIAN')
+            # Apply a random z-axis rotation # Works good.
+            if instance_obj:
+                instance_obj.rotation_euler[2] = random.uniform(0, 2 * math.pi)
+    return
+
+def place_text_labels(stack_list, grid_size=5, cell_size=10.0, z_height=5.0, loc_x=0.0, loc_y=0.0, loc_z=0.0):
+    # Cleanup previous labels
+    #for obj in bpy.data.objects:
+    #    if obj.name.startswith("Label_"):
+    #        bpy.data.objects.remove(obj, do_unlink=True)
+    for i, (label_text, _) in enumerate(stack_list):
+        # Grid layout (left to right, bottom to top)
+        row = i // grid_size
+        col = i % grid_size
+        x = loc_x + 10 + col * cell_size   
+        y = loc_y + row * cell_size
+        z = loc_z + z_height
+        # Add and configure text object
+        bpy.ops.object.text_add(location=(x, y, z))
+        text_obj = bpy.context.object
+        text_obj.name = f"Label_{i+1}"
+        text_obj.data.body = label_text
+        # Center text horizontally
+        text_obj.data.align_x = 'CENTER'
+        text_obj.data.extrude = 0.05
+        # View from the -Y direction
+        text_obj.rotation_euler[0] = math.radians(90)
+        # Convert text to mesh
+        bpy.ops.object.convert(target='MESH')
+        stack_label = bpy.context.active_object
+        stack_label.data.materials.append(text_mat)
+        #stack_label.select_all(action='SELECT')        
+    return bpy.context.active_object                  
+
+def fig1_message(loc_x=0.0, loc_y=0.0, loc_z=0.0, msg='TESTING TESTING 1 2 3'):
+    #'Various types of 2 vertically aligned electron-proton configurations',
+    #'TLBL      TRTR      TRTL     BRBR       BRBL      TRBL     BRTR     BRTL',
+    #'good      good       bad        good        bad         good       bad      bad'    
+    list = ['good', 'good', 'bad', 'good', 'bad', 'good', 'bad', 'bad']  
+    grid_size=12 
+    cell_size=5.0
+    z_height=-8.75    
+    #for i, (label_text, _) in enumerate(stack_list):
+    for i in range(8):
+        # Grid layout (left to right, bottom to top)
+        row = i // grid_size
+        col = i % grid_size
+        x = loc_x + 10 + col * cell_size   
+        y = loc_y + row * cell_size
+        z = loc_z + z_height
+        # Add and configure text object
+        bpy.ops.object.text_add(location=(x, y, z))
+        text_obj = bpy.context.object
+        text_obj.name = f"Label_{i+1}"
+        text_obj.data.body = list[i]
+        # Center text horizontally
+        text_obj.data.align_x = 'CENTER'
+        #text_obj.data.align_x = 'LEFT'
+        text_obj.data.extrude = 0.05
+        # Face +Y direction
+        text_obj.rotation_euler[0] = math.radians(90)
+        # Convert text to mesh
+        bpy.ops.object.convert(target='MESH')
+        message = bpy.context.active_object
+        message.data.materials.append(text_mat)
+    return  
+ 
+def Linear_and_Angular_Motion():
+    one_stack = [('TR',4)]
+    #place_text_labels(one_stack, loc_x=10.0, loc_y=0.0, loc_z=5.0)
+    #Error 
+    build_all_stacks(one_stack, spacing=10, loc_x=0.0, loc_y=0.0, loc_z=0.0)
+    #place_text_labels(one_stack, loc_x=10.0, loc_y=0.0, loc_z=5.0)
+    bpy.ops.object.select_all(action='DESELECT')
+    for obj in bpy.context.scene.objects:
+       if obj.name.startswith("TR_S"):
+            obj.select_set(True)
+    bpy.context.view_layer.objects.active  = obj
+    #bpy.ops.action.interpolation_type(type='LINEAR')
+    obj = bpy.context.active_object 
+    TR = obj
+    #Start
+    TR.location.z = 0
+    TR.rotation_euler[2] = 0
+    # insert keyframe at start_frame
+    start_frame = 0
+    TR.keyframe_insert("location", frame=start_frame)
+    TR.keyframe_insert("rotation_euler", frame=start_frame)
+    #Change the cube
+    TR.rotation_euler[2] = 2*6.28319
+    TR.location.z = 10
+    # insert a middle keyframe 
+    middle_frame = 120
+    TR.keyframe_insert("location", frame=middle_frame)
+    TR.keyframe_insert("rotation_euler", frame=middle_frame)    
+    #Change the cube
+    TR.rotation_euler[2] = 4*6.28319
+    TR.location.z = 0
+    #End. Insert an end_keyframe
+    end_frame = 240
+    TR.keyframe_insert("location", frame=end_frame)
+    TR.keyframe_insert("rotation_euler", frame=end_frame)
+    return
+
+def add_continuous_rotation(obj, axis_index=2, speed=-0.05, spin_dir="L"): #axis_index=2 = z_axis
+    # The line gaps in this funct were removed to run in the console 
+    driver = obj.driver_add("rotation_euler", axis_index).driver
+    var = driver.variables.new()
+    var.name = "frame_number"
+    var.type = "SINGLE_PROP"
+    target = var.targets[0]
+    target.id_type = 'SCENE'
+    target.id = bpy.context.scene
+    target.data_path = "frame_current"
+    #if spin_dir 
+    if spin_dir=="L": 
+        driver.expression = f" -1 * {speed} * {var.name}"   
+    else:
+        driver.expression = f"{speed} * {var.name}"      
+    #driver.expression = f"{speed} * {var.name}" 
+    return
+
+def build_collections():    
+    ProtonGroup('BL', loc_x=0.0, loc_y=0.0, loc_z=0.0).build()     
+    ProtonGroup('BR', loc_x=0.0, loc_y=0.0, loc_z=0.0).build()     
+    ProtonGroup('TL', loc_x=0.0, loc_y=0.0, loc_z=0.0).build()   
+    ProtonGroup('TR', loc_x=0.0, loc_y=0.0, loc_z=0.0).build() 
+    bpy.ops.object.select_all(action='DESELECT')
+    return
+
+# =============================
+# Special H Configurations
+# =============================
+
+# Apply build_4_H() to add the 4 instances in their spatial order (TL,TR,BL,BR)
+# Built as two vertical stacks two e-p stacks (TLBL) and (TRBR).
+def build_4_H(stacks = [('BL',4)], spacing=10, loc_x=0.0, loc_y=0.0, loc_z=0.0):
+    # Currently under Construction   
+    stacks = [('TLBL',12), ('TRBR',11)]      
+    group_collections = {
+        'TR': 'TR_Collection',
+        'TL': 'TL_Collection',
+        'BR': 'BR_Collection',
+        'BL': 'BL_Collection'}
+    spacing = spacing 
+    for stack_number, (stack_text, _) in enumerate(stacks):
+        row = stack_number // 12
+        col = stack_number % 12
+        base_x = loc_x + 10 + col * spacing
+        #base_x = loc_x  
+        #base_y = loc_y + row * spacing   # initialy at (10,0,0) 
+        base_y = loc_y + row * spacing
+        group_list = [stack_text[i:i+2] for i in range(0, len(stack_text), 2)]
+        #print(f"Building stack {stack_number + 1} at position ({base_x}, {base_y}) with groups: {group_list}")
+        for level, group in enumerate(group_list):
+            collection_name = group_collections.get(group)
+            if collection_name is None:
+                print(f"Unknown group: {group}")
+                continue
+            z = loc_z -level * spacing
+            #z = loc_z
+            instance_name = f"{group}_Stack{stack_number}_Level{level}"
+            #print(instance_name)
+            instance_collection(bpy.data.collections[collection_name], (base_x, base_y, z), instance_name)
+    bpy.ops.object.select_all(action='DESELECT')
+    return
+    
+def good_and_bad_di_Hydrogen_fig1():
+    '''Arrange 16 proton groups as per Diatomic Hydrogen fig1.'''
+    #('TL',1), ('BR',2), ('TR',3), ('BL',4) # source stacks
+    top_row = [('TL',1), ('TR',3), ('TR',3), ('BR',2), ('BR',2), ('TR',3), ('BR',2), ('BR',2)]
+    bot_row = [('BL',4), ('TR',3), ('TL',1), ('BR',2), ('BL',4), ('BL',4), ('TR',3), ('TL',1)]
+    build_all_stacks(top_row, spacing=5, loc_x=0.0, loc_y=0.0, loc_z=3.75)
+    #place_text_labels(top_row, loc_x=10.0, loc_y=0.0, loc_z=5.0)
+    build_all_stacks(bot_row, spacing=5, loc_x=0.0, loc_y=0.0, loc_z=-3.75)
+    #place_text_labels(bot_row, loc_x=10.0, loc_y=0.0, loc_z=-15.0)
+    fig1_message()  # Consider adding two more message lines   
+    #'Various types of 2 vertically aligned electron-proton configurations',
+    #    'TLBL      TRTR      TRTL     BRBR       BRBL      TRBL     BRTR     BRTL',
+    #    'good      good       bad        good        bad         good       bad      bad',    
+    # place_text_labels() only uses labels, not commentary
+    return
+
+def good_di_Hydrogens():
+    '''Arrange 8 proton groups as per Diatomic Hydrogen fig1.'''
+    #A_locs = [(-12, 0, z), (-4, 0, z), (4, 0, z), (12, 0, z)]
+    #'TL','TR','BR','TR'
+    top_row = [('TL',1), ('TR',3), ('BR',2), ('TR',3)]
+    build_all_stacks(top_row, spacing=5, loc_x=0.0, loc_y=0.0, loc_z=3.75)
+    #place_text_labels(top_row, loc_x=10.0, loc_y=0.0, loc_z=5.0)        
+    #'BL','TR','BR','BL'
+    bot_row = [('BL',4), ('TR',3), ('BR',2), ('BL',4)]
+    build_all_stacks(bot_row, spacing=5, loc_x=0.0, loc_y=0.0, loc_z=-3.75)
+    #place_text_labels(bot_row, loc_x=10.0, loc_y=0.0, loc_z=-15.0)
+    #Need a good_diH2_message()  #
+    bpy.ops.object.select_all(action='DESELECT')  
+    return
+
+def quick_Light(origin=(0,0,0)):
+    #import mathutils
+    bpy.ops.object.select_all(action='DESELECT')
+    positions = [
+        (x, y, z)
+        for x in (origin[0]-75, origin[0]+75)
+        for y in (origin[1]-75, origin[1]+75)
+        for z in (origin[2]-75, origin[2]+75)]
+    for pos in positions:
+        bpy.ops.object.light_add(type='AREA', location=pos)
+        light = bpy.context.object
+        light.data.size = 40
+        light.data.energy = 40000
+        # Point the light at the origin
+        direction = mathutils.Vector((origin[0], origin[1], origin[2])) - mathutils.Vector(pos)
+        light.rotation_euler = direction.to_track_quat('-Z', 'Y').to_euler()
+    return
+
+def add_positioned_lights(stacks, spacing=10):  # (threeSix_stacks, spacing_x=10, spacing_y=10)
+    #def build_all_stacks(stacks, spacing=10):
+    for stack_number, (stack_text, _) in enumerate(stacks):
+        # Grid layout (left to right, bottom to top)
+        #row = i // grid_size
+        #col = i % grid_size
+        row = stack_number // 12
+        col = stack_number % 12
+    #light1(x_loc) = ((#cols + 1)/2)*(col_gap) = 12         
+    #x = 10 + col * cell_size  
+    x0 = ((col + 1)/2) * spacing          
+    x1 = ((col + 1)/2) * spacing
+    y0 = -60 + (row/2) * spacing 
+    y1 = -60 + (row/2) * spacing 
+    z0 = 60  #z_height  
+    z1 = -60  #z_height
+    bpy.ops.object.light_add(type='AREA', location=(x0, y0, z0), rotation=(math.radians(45), 0, 0), scale=(1, 1, 1))
+    bpy.context.object.data.size = 30
+    bpy.context.object.data.energy = 50000
+    bpy.ops.object.light_add(type='AREA', location=(x1, y1, z1), rotation=(math.radians(135), 0, 0), scale=(1, 1, 1))
+    bpy.context.object.data.size = 20
+    bpy.context.object.data.energy = 50000
+    return
+
+def four_front_lights(origin=(0,0,0)):
+    #import mathutils
+    bpy.ops.object.select_all(action='DESELECT')
+          
+    positions = [
+        (x, y, z)
+        for x in (origin[0]-75, origin[0]+75)
+        for y in (origin[1]-75, origin[1]-75)
+        for z in (origin[2]-75, origin[2]+75)] 
+    for pos in positions:
+        bpy.ops.object.light_add(type='AREA', location=pos)
+        light = bpy.context.object
+        light.data.size = 40
+        light.data.energy = 40000
+        # Point the light at the origin
+        direction = mathutils.Vector((origin[0], origin[1], origin[2])) - mathutils.Vector(pos)
+        light.rotation_euler = direction.to_track_quat('-Z', 'Y').to_euler()
+    return
+
+def some_cleanup():
+    bpy.ops.object.select_all(action='SELECT')
+    bpy.ops.object.delete(use_global=False)
+    collection_names = [col.name for col in bpy.data.collections]
+    for name in collection_names:
+        bpy.data.collections.remove(bpy.data.collections[name])    
+    bpy.ops.outliner.orphans_purge() 
+    return
+
+# Emit particles one at a time from random locations within ±40° or 
+# +/-20 latitude, modify emit_particles_in_latitude_band() so that 
+# each particle is created and animated at a different start frame. 
+# creating a continuous emission effect.
+def emit_particles_in_latitude_band_continuous(
+    pro_obj,
+    num_particles=50,
+    emission_radius=0.5,
+    emission_speed=0.1,
+    start_frame=1,
+    end_frame=360,
+    lat_min_deg=-40,
+    lat_max_deg=40,
+    particle_radius=0.05,
+    frame_interval=2):
+    """
+    Emit particles one at a time from a latitude band around a proton object.
+    Each particle is released at a different frame for a continuous effect.
+    """
+    lat_min = math.radians(lat_min_deg)
+    lat_max = math.radians(lat_max_deg)
+    for i in range(num_particles):
+        latitude = random.uniform(lat_min, lat_max)
+        longitude = random.uniform(0, 2 * math.pi)
+        release_frame = start_frame + i * frame_interval
+        # Spherical coordinates to Cartesian
+        x = pro_obj.location.x + emission_radius * math.cos(latitude) * math.cos(longitude)
+        y = pro_obj.location.y + emission_radius * math.cos(latitude) * math.sin(longitude)
+        z = pro_obj.location.z + emission_radius * math.sin(latitude)
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=particle_radius, location=(x, y, z))
+        particle = bpy.context.active_object
+        particle.name = f"{pro_obj.name}_latband_particle_{i}"
+        # Animate particle moving outward from its release frame
+        for frame in range(release_frame, end_frame):
+            r = emission_radius + emission_speed * (frame - release_frame)
+            particle.location.x = pro_obj.location.x + r * math.cos(latitude) * math.cos(longitude)
+            particle.location.y = pro_obj.location.y + r * math.cos(latitude) * math.sin(longitude)
+            particle.location.z = pro_obj.location.z + r * math.sin(latitude)
+            particle.keyframe_insert(data_path="location", frame=frame)
+    return 
+
+
+def create_slotlayout_3d(element_symbol, block_size=10.0, origin=(0,0,0)):
+    # Needs an element_symbol label, see create_SL_label(), the next function
+    # Camera for SL
+    bpy.ops.object.camera_add(align='VIEW',location=(origin[0],origin[1]-140, origin[2]),rotation=(1.57250, 0, 0))
+    # Light the SL - Top light
+    bpy.ops.object.light_add(type='AREA', location=(origin[0],origin[1]-100, origin[2]+50))
+    light = bpy.context.object
+    light.data.size = 40
+    light.data.energy = 50000
+    # Point the top light at the SL
+    bpy.context.scene.tool_settings.transform_pivot_point = 'MEDIAN_POINT'
+    bpy.ops.transform.rotate(value=-1.127, orient_axis='X')   
+    # Light the SL - Bottom light
+    bpy.ops.object.light_add(type='AREA', location=(origin[0],origin[1]-100, origin[2]-50))    
+    light = bpy.context.object
+    light.data.size = 40
+    light.data.energy = 50000        
+    bpy.context.scene.tool_settings.transform_pivot_point = 'MEDIAN_POINT'    
+    bpy.ops.transform.rotate(value=-2.095, orient_axis='X')  
+    """
+    Create a 7x5 slot layout diagram for the given atom in 3D space.
+    Each block shows: slot number, protons, orientation, stack number.
+    """
+    layout = [
+        [None, None, 14, None, None],
+        [None, None, 4, 9, 13],
+        [None, 18, 2, 16, None],
+        [10, 6, 1, 7, 12],
+        [None, 17, 3, 19, None],
+        [11, 8, 5, None, None],
+        [None, None, 15, None, None]
+    ]
+
+    colors = [
+         (0,0,0,0),         # 0 protons: black
+         (0.8,0.8,0.8,1),   # 1: white
+         (0.1,0.1,1,1),     # 2: blue
+         (1,0,0,0.5),       # 3: red
+         (1,0.3,0.3,1),     # 4: salmon
+         (0.0,1,0.0,1),     # 5: lightgreen
+         (0.3,0.3,1,1),     # 6: skyblue
+    ]
+    # Get slot data for the atom
+    atom = atomic_data[element_symbol]
+    slots = {slot["slot"]: slot for slot in atom["slots"]}
+
+    # Create a parent empty for the SL diagram
+    #sl_parent = bpy.data.objects.new(f"{element_symbol}_SlotLayout", None)
+    #bpy.context.collection.objects.link(sl_parent)
+
+    for row_idx, row in enumerate(layout):
+        for col_idx, slot_num in enumerate(row):
+            if slot_num is None or slot_num not in slots:
+                continue
+            slot = slots[slot_num]
+            color = colors[slot['protons']]
+            # Calculate position in 3D space. Double, double, and double again to size the SL
+            # to display alongside the atom. May need to 'automate' the saclling to atom size.
+            # -32 centers the SL on the x axis
+            x = origin[0] - 40 + (col_idx - 2) * 8 * block_size + 40
+            y = origin[1] - 0.1
+            z = origin[2] + (3 - row_idx) * 4 * block_size
+            # Create the colored plane
+            bpy.ops.mesh.primitive_plane_add(size=3.95 * block_size, location=(x, y, z))
+            bpy.ops.transform.resize(value=(2, 1, 1))            
+            bpy.ops.transform.rotate(value=1.5708, orient_axis='X')
+            plane = bpy.context.active_object
+            #plane.parent = sl_parent
+            mat = bpy.data.materials.new(f"SL_Color_{slot_num}")
+            mat.diffuse_color = color
+            plane.data.materials.append(mat)
+            # Add slot info as text
+            bpy.ops.object.text_add(location=(x, y - 0.5, z - 0.75))
+            text = bpy.context.active_object
+            #text.parent = sl_parent
+            text.data.body = f"{slot_num},{slot['protons']},{slot['orien']},{slot['stack_num']}"
+            text.scale = (3.7, 3.7, 3.7)
+            text.rotation_euler[0] = math.radians(90)
+            text.data.align_x = 'CENTER'
+            bpy.ops.object.convert(target='MESH')
+            #text.data.materials.append(text_mat)
+            text.data.materials.append(text_mat_black)
+            bpy.ops.object.select_all(action='DESELECT')
+            # Optionally, rotate text to face camera
+            #cam = bpy.context.scene.camera
+            #if cam:
+            #    constraint = text.constraints.new(type='TRACK_TO')
+            #    constraint.target = cam
+            #     constraint.track_axis = 'TRACK_Y'
+            #    constraint.up_axis = 'UP_Z'
+            #Checks if a camera exists in the scene.
+            #Adds a "Track To" constraint to the text mesh, so it always faces the camera.
+            #sl_parent
+    create_SL_label(element_symbol, block_size, origin)        
+    return 
+
+
+def create_SL_label(element_symbol, block_size=10.0, origin=(0,0,0)):
+    # Create a label with the same size and text parameters as in the SL diagram
+    #sl_parent = bpy.data.objects.new(f"{element_symbol}_SlotLayout", None)
+
+    # -40 centers the SL on the x axis
+    x = origin[0] - 40 - 2 * 8 * block_size + 40
+    y = origin[1] - 0.1
+    z = origin[2] + 3 * 4 * block_size
+    
+    # Create the colored plane
+    bpy.ops.mesh.primitive_plane_add(size= 4 * block_size, location=(x, y, z))
+    bpy.ops.transform.resize(value=(2, 1, 1))            
+    bpy.ops.transform.rotate(value=1.5708, orient_axis='X')
+    plane = bpy.context.active_object
+    #plane.parent = sl_parent
+    atom = element_symbol     
+    bpy.ops.object.text_add(location=(x, y - 0.5, z - 0.75))
+    text = bpy.context.active_object
+    #text.parent = sl_parent
+    #text.data.body = f"{element_symbol}"
+    text.data.body = f"{atom}"
+    text.scale = (3.7, 3.7, 3.7)
+    text.rotation_euler[0] = math.radians(90)
+    text.data.align_x = 'CENTER'
+    bpy.ops.object.convert(target='MESH')
+    #text.data.materials.append(text_mat)
+    text.data.materials.append(text_mat_black)
+    bpy.ops.object.select_all(action='DESELECT')
+    #sl_parent
+    return  
+
+
+elements = [
+    {"number": 1, "symbol": "H", "name": "Hydrogen", "type": "nonmetal"},
+    {"number": 2, "symbol": "He", "name": "Helium", "type": "noble_gas"},
+    {"number": 3, "symbol": "Li", "name": "Lithium", "type": "alkali_metal"},
+    {"number": 4, "symbol": "Be", "name": "Beryllium", "type": "alkaline_earth"},
+    {"number": 5, "symbol": "B", "name": "Boron", "type": "metalloid"},
+    {"number": 6, "symbol": "C", "name": "Carbon", "type": "nonmetal"},
+    {"number": 7, "symbol": "N", "name": "Nitrogen", "type": "nonmetal"},
+    {"number": 8, "symbol": "O", "name": "Oxygen", "type": "nonmetal"},
+    {"number": 9, "symbol": "F", "name": "Fluorine", "type": "halogen"},
+    {"number": 10, "symbol": "Ne", "name": "Neon", "type": "noble_gas"},
+    {"number": 11, "symbol": "Na", "name": "Sodium", "type": "alkali_metal"},
+    {"number": 12, "symbol": "Mg", "name": "Magnesium", "type": "alkaline_earth"},
+    {"number": 13, "symbol": "Al", "name": "Aluminum", "type": "basic_metal"},
+    {"number": 14, "symbol": "Si", "name": "Silicon", "type": "metalloid"},
+    {"number": 15, "symbol": "P", "name": "Phosphorus", "type": "nonmetal"},
+    {"number": 16, "symbol": "S", "name": "Sulfur", "type": "nonmetal"},
+    {"number": 17, "symbol": "Cl", "name": "Chlorine", "type": "halogen"},
+    {"number": 18, "symbol": "Ar", "name": "Argon", "type": "noble_gas"},
+    {"number": 19, "symbol": "K", "name": "Potassium", "type": "alkali_metal"},
+    {"number": 20, "symbol": "Ca", "name": "Calcium", "type": "alkaline_earth"},
+    {"number": 21, "symbol": "Sc ", "name": "Scandium", "type": "transition_metal"},
+    {"number": 22, "symbol": "Ti ", "name": "Titanium", "type": "transition_metal"},
+    {"number": 23, "symbol": "V", "name": "Vanadium", "type": "transition_metal"},
+    {"number": 24, "symbol": "Cr", "name": "Chromium", "type": "transition_metal"},
+    {"number": 25, "symbol": "Mn", "name": "Manganese", "type": "transition_metal"},
+    {"number": 26, "symbol": "Fe", "name": "Iron", "type": "transition_metal"},
+    {"number": 27, "symbol": "Co", "name": "Cobalt", "type": "transition_metal"},
+    {"number": 28, "symbol": "Ni", "name": "Nickel", "type": "transition_metal"},
+    {"number": 29, "symbol": "Cu", "name": "Copper", "type": "transition_metal"},
+    {"number": 30, "symbol": "Zn", "name": "Zinc", "type": "transition_metal"},
+    {"number": 31, "symbol": "Ga",  "name": "Gallium", "type": "basic_metal"},
+    {"number": 32, "symbol": "Ge", "name": "Germanium", "type": "metalloid"},
+    {"number": 33, "symbol": "As", "name": "Arsenic", "type": "metalloid"},
+    {"number": 34, "symbol": "Se", "name": "Selenium", "type": "nonmetal"},
+    {"number": 35, "symbol": "Br", "name": "Bromine", "type": "halogen"},
+    {"number": 36, "symbol": "Kr", "name": "Krypton", "type": "noble_gas"},
+    {"number": 37, "symbol": "Rb", "name": "Rubidium", "type": "alkali_metal"},
+    {"number": 38, "symbol": "Sr", "name": "Strontium", "type": "alkaline_earth"},
+    {"number": 39, "symbol": "Y", "name": "Yttrium", "type": "transition_metal"},
+    {"number": 40, "symbol": "Zr", "name": "Zirconium", "type": "transition_metal"},
+    {"number": 41, "symbol": "Nb", "name": "Niobium", "type": "transition_metal"},
+    {"number": 42, "symbol": "Mo", "name": "Molybdenum", "type": "transition_metal"},
+    {"number": 43, "symbol": "Tc", "name": "Technetium", "type": "transition_metal"},
+    {"number": 44, "symbol": "Ru", "name": "Ruthenium", "type": "transition_metal"},
+    {"number": 45, "symbol": "Rh", "name": "Rhodium", "type": "transition_metal"},
+    {"number": 46, "symbol": "Pd", "name": "Palladium", "type": "transition_metal"},
+    {"number": 47, "symbol": "Ag", "name": "Silver", "type": "transition_metal"},
+    {"number": 48, "symbol": "Cd", "name": "Cadmium", "type": "transition_metal"},
+    {"number": 49, "symbol": "In", "name": "Indium", "type": "basic_metal"},
+    {"number": 50, "symbol": "Sn", "name": "Tin", "type": "basic_metal"},
+    {"number": 51, "symbol": "Sb", "name": "Antimony", "type": "metalloid"},
+    {"number": 52, "symbol": "Te", "name": "Tellurium", "type": "metalloid"},
+    {"number": 53, "symbol": "I", "name": "Iodine", "type": "halogen"},
+    {"number": 54, "symbol": "Xe", "name": "Xenon", "type": "noble_gas"},
+    {"number": 55, "symbol": "Cs", "name": "Caesium", "type": "alkali_metal"},
+    {"number": 56, "symbol": "Ba", "name": "Barium", "type": "alkaline_earth"},
+    {"number": 57, "symbol": "La", "name": "Lanthanum", "type": "lanthanide"},
+    {"number": 58, "symbol": "Ce", "name": "Cerium", "type": "lanthanide"},
+    {"number": 59, "symbol": "Pr", "name": "Praseodymium", "type": "lanthanide"},
+    {"number": 60, "symbol": "Nd", "name": "Neodymium", "type": "lanthanide"},
+    {"number": 61, "symbol": "Pm", "name": "Promethium", "type": "lanthanide"},
+    {"number": 62, "symbol": "Sm", "name": "Samarium", "type": "lanthanide"},
+    {"number": 63, "symbol": "Eu", "name": "Europium", "type": "lanthanide"},
+    {"number": 64, "symbol": "Gd", "name": "Gadolinium", "type": "lanthanide"},
+    {"number": 65, "symbol": "Tb", "name": "Terbium", "type": "lanthanide"},
+    {"number": 66, "symbol": "Dy", "name": "Dysprosium", "type": "lanthanide"},
+    {"number": 67, "symbol": "Ho", "name": "Holmium", "type": "lanthanide"},
+    {"number": 68, "symbol": "Er", "name": "Erbium", "type": "lanthanide"},
+    {"number": 69, "symbol": "Tm", "name": "Thulium", "type": "lanthanide"},
+    {"number": 70, "symbol": "Yb", "name": "Ytterbium", "type": "lanthanide"},	
+    {"number": 71, "symbol": "Lu", "name": "Lutetium", "type": "lanthanide"},
+    {"number": 72, "symbol": "Hf", "name": "Hafnium", "type": "transition_metal"},
+    {"number": 73, "symbol": "Ta", "name": "Tantalum", "type": "transition_metal"},
+    {"number": 74, "symbol": "W", "name": "Tungsten", "type": "transition_metal"},
+    {"number": 75, "symbol": "Re", "name": "Rhenium", "type": "transition_metal"},
+    {"number": 76, "symbol": "Os", "name": "Osmium", "type": "transition_metal"},
+    {"number": 77, "symbol": "Ir", "name": "Iridium", "type": "transition_metal"},
+    {"number": 78, "symbol": "Pt", "name": "Platinum", "type": "transition_metal"},
+    {"number": 79, "symbol": "Au", "name": "Gold", "type": "transition_metal"},
+    {"number": 80, "symbol": "Hg", "name": "Mercury", "type": "transition_metal"},
+    {"number": 81, "symbol": "Tl", "name": "Thallium", "type": "basic_metal"},
+    {"number": 82, "symbol": "Pb", "name": "Lead", "type": "basic_metal"},
+    {"number": 83, "symbol": "Bi", "name": "Bismuth", "type": "basic_metal"},
+    {"number": 84, "symbol": "Po", "name": "Polonium", "type": "metalloid"},
+    {"number": 85, "symbol": "At", "name": "Astatine", "type": "halogen"},
+    {"number": 86, "symbol": "Rn", "name": "Radon", "type": "noble_gas"},
+    {"number": 87, "symbol": "Fr", "name": "Francium", "type": "alkali_metal"},
+    {"number": 88, "symbol": "Ra", "name": "Radium", "type": "alkaline_earth"},
+    {"number": 89, "symbol": "Ac", "name": "Actinium", "type": "actinide"},
+    {"number": 90, "symbol": "Th", "name": "Thorium", "type": "actinide"},            
+]
+
+def create_Periodic_table_3d(element_symbol, origin, block_size=1.0):
+    # Camera for Pt
+    bpy.ops.object.camera_add(align='VIEW',location=(origin[0],origin[1]-140, origin[2]),rotation=(1.57250, 0, 0))
+    #bpy.ops.object.camera_add(align='VIEW',location=(100, -140, 0),rotation=(1.57250, 0, 0))
+    # Light the Pt
+    four_front_lights(origin)
+    """
+    Create a 9x18 Periodic table layout diagram for the given atom in 3D space.
+    Each occupied pt_layout position contains an atomic number.
+    #the block shows: atomic symbol and atomic number color coded according to atomic type.
+    """
+    pt_layout = [
+        [1, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, 2],
+        [3, 4, None, None, None, None, None, None, None, None, None, None, 5, 6, 7, 8, 9, 10],
+        [11, 12, None, None, None, None, None, None, None, None, None, None, 13, 14, 15, 16, 17, 18],
+        [19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36],
+        [37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54],
+        [55, 56, None, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86],
+        [87, 88, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None],
+        [None, None, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, None],
+        [None, None, 89, 90, None, None, None, None, None, None, None, None, None, None, None, None, None, None],
+    ]
+    # Pt atomic type colors. 
+    pt_colors = [          
+        (0.3, 0.6, 1.0, 1.0),  # lt blue
+        (0.8, 1.0, 0.6, 1.0),  # lt green
+        (1.0, 0.3, 0.3, 1.0),  # lt pink
+        (1.0, 0.7, 0.4, 1.0),  # lt orange
+        (0.8, 0.6, 1.0, 1.0),  # lt purple
+        (0.6, 0.6, 1.0, 1.0),  # lt gray violet
+        (0.5, 1.0, 0.6, 1.0),  # lt green          
+        (1.0, 1.0, 0.0, 1.0),  # yellow
+        (0.9, 0.2, 0.2, 1.0),  # dk pink 
+        (0.6, 0.3, 1.0, 1.0),  # violet
+    ]
+    # Mapping atomic types to pt_colors. 
+    atomic_type_to_index = {     
+        "nonmetal": 0,
+        "noble_gas": 1,
+        "alkali_metal": 2,
+        "alkaline_earth": 3,
+        "metalloid": 4,
+        "halogen": 5,
+        "basic_metal": 6,
+        "transition_metal": 7,
+        "lanthanide": 8,
+        "actinide": 9,
+    }
+    #Look up or filter by atomic number, symbol, or type.
+    #How to Use in Your Periodic Table Function
+    #For each slot in your PT layout, find the element dict by atomic number.
+    #Use element["type"] to select the color from your PT_colors list or dict.
+    #Use element["symbol"] and element["number"] for the text.
+    for row_idx, row in enumerate(pt_layout):
+        for col_idx, atomic_num in enumerate(row):
+            if atomic_num is None:
+                continue
+            element = next(e for e in elements if e["number"] == atomic_num)
+            symbol = element["symbol"]
+            color = pt_colors[atomic_type_to_index[element["type"]]]
+            
+            if symbol == element_symbol:
+                #The selected atom needs its own unique color, let it be red.      
+                color = (1.0, 0.0, 0.0, 0.1)
+    
+            # ... create plane, add text, etc. ...
+            #print('atomic number = ', atomic_num, 'color = ', color, 'counter = ', counter)
+
+            # Create a parent empty for the Pt diagram. Not yet included 
+            #pt_parent = bpy.data.objects.new(f"{element_symbol}_PTLayout", None)
+            #bpy.context.collection.objects.link(pt_parent)
+
+            # The periodic table is 170 wide. Move the table 
+            # -65 centers the Pt on the axis(?)          
+            x = origin[0] -65 + (col_idx-2) * block_size 
+            y = origin[1] - 0.1
+            z = origin[2] + (3 - row_idx) * block_size
+            
+            # Create the colored atom square plane
+            bpy.ops.mesh.primitive_plane_add(size=0.975 * block_size, location=(x, y, z))
+            bpy.ops.transform.rotate(value=1.5708, orient_axis='X')
+            plane = bpy.context.active_object
+            ##plane.parent = pt_parent
+            
+            #mat = bpy.data.materials.new(f"SL_Color_{slot_num}")   # SL soln
+            mat = bpy.data.materials.new(f"PT_Color_{atomic_num}")  
+            mat.diffuse_color = color
+            plane.data.materials.append(mat)
+            
+            ## Add slot info as text
+            bpy.ops.object.text_add(location=(x, y - 0.5, z - 0.75))
+            text = bpy.context.active_object
+            ##text.parent = pt_parent
+            
+            #text.data.body = f"{slot_num},{slot['protons']},{slot['orien']},{slot['stack_num']}"
+            text.data.body = f"{symbol},{atomic_num}"
+            
+            text.scale = (3.7, 3.7, 3.7)
+            text.rotation_euler[0] = math.radians(90)
+            text.data.align_x = 'CENTER'
+            bpy.ops.object.convert(target='MESH')
+            ##text.data.materials.append(text_mat)
+            text.data.materials.append(text_mat_black)
+            bpy.ops.object.select_all(action='DESELECT')
+            
+            # Optionally, rotate text to face camera
+            #cam = bpy.context.scene.camera
+            #if cam:
+            #    constraint = text.constraints.new(type='TRACK_TO')
+            #    constraint.target = cam
+            #     constraint.track_axis = 'TRACK_Y'
+            #    constraint.up_axis = 'UP_Z'
+            #Checks if a camera exists in the scene.
+            #Adds a "Track To" constraint to the text mesh, so it always faces the camera.
+            #pt_parent
+    #create_Pt_title(element_symbol, block_size, origin)       # Not yet used       
+    return 
+
+all_stacks = [('TL',1), ('BR',2), ('TR',3), ('BL',4),
+    ('TLTL',5), ('BRBR',6), ('TRTR',7), ('BLBL',8), ('TLBR',9), ('TRBL',10), 
+    ('TRBR',11), ('TLBL',12), ('BLTL',13), ('BRTR',14), ('BLTR',15), ('BRTL',16), 
+    ('TLTLTL',17), ('BRBRBR',18), ('TRTRTR',19), ('BLBLBL',20), ('TLBRBR',21), 
+    ('TRBLBL',22), ('TRBRBR',23), ('TLBLBL',24), ('TLTLBR',25), ('TRTRBL',26), 
+    ('TRTRBR',27), ('TLTLBL',28), ('BLTLTL',29), ('BRTRTR',30), ('BLTRTR',31), 
+    ('BRTLTL',32), ('BLBLTL',33), ('BRBRTR',34), ('BLBLTR',35), ('BRBRTL',36), 
+    ('TLTLTLTL',37), ('BRBRBRBR',38), ('TRTRTRTR',39), ('BLBLBLBL',40), 
+    ('TLBRBRBR',41), ('TRBLBLBL',42), ('TRBRBRBR',43), ('TLBLBLBL',44), ('TLTLBRBR',45), ('TRTRBLBL',46), 
+    ('TRTRBRBR',47), ('TLTLTLBL',48), ('TLTLTLBR',49), ('TRTRTRBL',50), ('TRTRTRBR',51), ('TLTLTLBL',52), 
+    ('BLTLTLTL',53), ('BRTRTRTR',54), ('BLTRTRTR',55), ('BRTLTLTL',56), ('BLBLTLTL',57), ('BRBRTRTR',58),
+    ('BLBLTRTR',59), ('BRBRTLTL',60), ('BLBLBLTL',61), ('BRBRBRTR',62), ('BLBLBLTR',63), ('BRBRBRTL',64), 
+    ('TLTLTLTLTL',65), ('BRBRBRBRBR',66), ('TRTRTRTRTR',67), ('BLBLBLBLBL',68), ('TLBRBRBRBR',69), ('TRBLBLBLBL',70),
+    ('TRBRBRBRBR',71), ('TLBLBLBLBL',72), ('TLTLBRBRBR',73), ('TRTRBLBLBL',74), ('TRTRBRBRBR',75), ('TLTLBLBLBL',76), 
+    ('TLTLTLBRBR',77), ('TRTRTRBLBL',78), ('TRTRTRBRBR',79), ('TLTLTLBLBL',80), ('TLTLTLTLBR',81), ('TRTRTRTRBL',82), 
+    ('TRTRTRTRBR',83), ('TLTLTLTLBL',84), ('BLTLTLTLTL',85), ('BRTRTRTRTR',86), ('BLTRTRTRTR',87), ('BRTLTLTLTL',88),
+    ('BLBLTLTLTL',89), ('BRBRTRTRTR',90), ('BLBLTRTRTR',91), ('BRBRTLTLTL',92), ('BLBLBLTLTL',93), ('BRBRBRTRTR',94), 
+    ('BLBLBLTRTR',95), ('BRBRBRTLTL',96), ('BLBLBLBLTL',97), ('BRBRBRBRTR',98), ('BLBLBLBLTR',99), ('BRBRBRBRTL',100), 
+    ('TLTLTLTLTLTL',101), ('BRBRBRBRBRBR',102), ('TRTRTRTRTRTR',103), ('BLBLBLBLBLBL',104), ('TLBRBRBRBRBR',105), 
+    ('TRBLBLBLBLBL',106), ('TRBRBRBRBRBR',107), ('TLBLBLBLBLBL',108), ('TLTLBRBRBRBR',109), ('TRTRBLBLBLBL',110), 
+    ('TRTRBRBRBRBR',111), ('TLTLBLBLBLBL',112), ('TLTLTLBRBRBR',113), ('TRTRTRBLBLBL',114), ('TRTRTRBRBRBR',115), 
+    ('TLTLTLBLBLBL',116), ('TLTLTLTLBRBR',117), ('TRTRTRTRBLBL',118), ('TRTRTRTRBRBR',119), ('TLTLTLTLBLBL',120), 
+    ('TLTLTLTLTLBR',121), ('TRTRTRTRTRBL',122), ('TRTRTRTRTRBR',123), ('TLTLTLTLTLBL',124), ('BLTLTLTLTLTL',125), 
+    ('BRTRTRTRTRTR',126), ('BLTRTRTRTRTR',127), ('BRTLTLTLTLTL',128), ('BLBLTLTLTLTL',129), ('BRBRTRTRTRTR',130), 
+    ('BLBLTRTRTRTR',131), ('BRBRTLTLTLTL',132), ('BLBLBLTLTLTL',133), ('BRBRBRTRTRTR',134), ('BLBLBLTRTRTR',135), 
+    ('BRBRBRTLTLTL',136), ('BLBLBLBLTLTL',137), ('BRBRBRBRTRTR',138), ('BLBLBLBLTRTR',139), ('BRBRBRBRTLTL',140), 
+    ('BLBLBLBLBLTL',141), ('BRBRBRBRBRTR',142), ('BLBLBLBLBLTR',143), ('BRBRBRBRBRTL',144)]
+
+example_stacks = [('TLTL',5), ('BRBR',6), ('TRTR',7), ('BLBL',8), ('TLBR',9), ('TRBL',10), 
+    ('TRBR',11), ('TLBL',12), ('BLTL',13), ('BRTR',14), ('BLTR',15), ('BRTL',16)]
+
+four_stacks = [('TL',1), ('BR',2), ('TR',3), ('BL',4)] 
+
+three_ep_stacks = [('TLTLTL',17), ('BRBRBR',18), ('TRTRTR',19), ('BLBLBL',20), ('TLBRBR',21), 
+    ('TRBLBL',22), ('TRBRBR',23), ('TLBLBL',24), ('TLTLBR',25), ('TRTRBL',26), 
+    ('TRTRBR',27), ('TLTLBL',28), ('BLTLTL',29), ('BRTRTR',30), ('BLTRTR',31), 
+    ('BRTLTL',32), ('BLBLTL',33), ('BRBRTR',34), ('BLBLTR',35), ('BRBRTL',36)]
+
+four_ep_stacks = [('TLTLTLTL',37), ('BRBRBRBR',38), ('TRTRTRTR',39), ('BLBLBLBL',40), 
+    ('TLBRBRBR',41), ('TRBLBLBL',42), ('TRBRBRBR',43), ('TLBLBLBL',44), ('TLTLBRBR',45), ('TRTRBLBL',46), 
+    ('TRTRBRBR',47), ('TLTLTLBL',48), ('TLTLTLBR',49), ('TRTRTRBL',50), ('TRTRTRBR',51), ('TLTLTLBL',52), 
+    ('BLTLTLTL',53), ('BRTRTRTR',54), ('BLTRTRTR',55), ('BRTLTLTL',56), ('BLBLTLTL',57), ('BRBRTRTR',58),
+    ('BLBLTRTR',59), ('BRBRTLTL',60), ('BLBLBLTL',61), ('BRBRBRTR',62), ('BLBLBLTR',63), ('BRBRBRTL',64)] 
+            
+TL_stack = [('TL',1)]
+BR_stack = [('BR',2)]
+TR_stack = [('TR',3)]
+BL_stack = [('BL',4)]
+
+
+def main():  # comment out some_cleanup() before running
+
+    quick_Light()  # Light up the atom
+    
+    build_collections() # The collections usually need to be created somewhere first.
+    # Then relocate the four proton groups about center coordinate (remx,remy,remz)
+    remx = -150 
+    remy = 5
+    remz = 5
+    relocate_collection(loc_x=remx, loc_y=-remy, loc_z=-remz, collection_name="BL_Collection", type='BL', spin_dir="L")
+    relocate_collection(loc_x=remx, loc_y=-remy, loc_z=remz, collection_name="TL_Collection", type='TL', spin_dir="L")
+    relocate_collection(loc_x=remx, loc_y=remy, loc_z=-remz, collection_name="BR_Collection", type='BR', spin_dir="R")
+    relocate_collection(loc_x=remx, loc_y=remy, loc_z=remz, collection_name="TR_Collection", type='TR', spin_dir="R")
+    
+    
+    # The new Atom class  works 
+    
+    carbon_atom = Atom("C", loc_x=-10.0, loc_y=0.0, loc_z=0.0, scale=20.0)  
+    carbon_atom.visualize()   
+    oxygen_atom = Atom("O", loc_x=10.0, loc_y=0.0, loc_z=0.0, scale=20.0)  
+    oxygen_atom.visualize()
+    
+    '''
+    hydrogen_atom = Atom("H", loc_x=0.0, loc_y=-20.0, loc_z=0.0, scale=20.0) 
+    hydrogen_atom.visualize()
+
+    helium_atom = Atom("He", loc_x=10.0, loc_y=-20.0, loc_z=0.0, scale=20.0)  
+    helium_atom.visualize()   
+
+    oxygen_atom = Atom("O", loc_x=0.0, loc_y=0.0, loc_z=0.0, scale=20.0)  
+    oxygen_atom.visualize()
+    
+    nitrogen_atom = Atom("N", loc_x=10.0, loc_y=0.0, loc_z=0.0, scale=20.0)  
+    nitrogen_atom.visualize()
+    
+    silicon_atom = Atom("Si", loc_x=40.0, loc_y=0.0, loc_z=0.0, scale=20.0)  
+    silicon_atom.visualize()
+    
+    lithium_atom = Atom("Li", loc_x=-10.0, loc_y=0.0, loc_z=0.0, scale=20.0)  
+    lithium_atom.visualize()
+    
+    thorium_atom = Atom("Th", loc_x=-70.0, loc_y=0.0, loc_z=0.0, scale=20.0)  
+    thorium_atom.visualize()    
+    '''   
+
+    #create_slotlayout_3d(element_symbol, block_size=2.0, origin=(0, 20, 0))
+    #create_slotlayout_3d("B", block_size=2.0, origin=(60, 0, 0))
+    create_slotlayout_3d("O", block_size=2.0, origin=(-100, 0, 0))
+
+    create_Periodic_table_3d("O", origin=(150,0,0), block_size=10.0)
+
+    # These all work, each instance at (10,0,0).
+    #build_all_stacks(stacks = TL_stack, 0spacing=10)  
+    #build_all_stacks(stacks = BL_stack, spacing=10)  
+    #build_all_stacks(stacks = TR_stack, spacing=10)  
+    #build_all_stacks(stacks = BR_stack, spacing=10)  
+
+    #build_all_stacks(three_ep_stacks, spacing=8) 
+    #place_text_labels(three_ep_stacks, cell_size=8)
+    #build_4_H() # Four instances built as two vertical stacks of two 
+    # e-p stacks (TLBL) and (TRBR) in their suggested spatial locations. 
+    
+    # Building then relocating the collections.
+    #ProtonGroup('BL', loc_x=0.0, loc_y=0.0, loc_z=0.0).build() 
+    #ProtonGroup('TL', loc_x=0.0, loc_y=0.0, loc_z=0.0).build() 
+    #ProtonGroup('BR', loc_x=0.0, loc_y=0.0, loc_z=0.0).build() 
+    #ProtonGroup('TR', loc_x=0.0, loc_y=0.0, loc_z=0.0).build() 
+
+    #build_all_stacks(three_ep_stacks, spacing=8)  # Where bpy.ops.object.origin_set
+    #build_all_stacks(four_stacks, spacing=8) 
+    
+    '''
+    # Particle system. Experimenting
+    bpy.ops.mesh.primitive_ico_sphere_add(radius=0.5, location=(0, 0, 0), scale=(1, 1, 1))
+    #bpy.ops.mesh.primitive_cylinder_add(radius=1, depth=2, enter_editmode=False, align='WORLD', location=(0, 0, 0), scale=(1, 1, 1))
+    pro_obj = bpy.context.active_object
+    
+    #proton_obj = add_proton(loc_x=0, loc_y=0, loc_z=0, type='BL', spin_mat=spin_mat_l)
+    proton_obj = build_TL(loc_x=0.0, loc_y=0.0, loc_z=0.0)
+        # The particle emitter is inside the L spinning proton.      
+    
+    emit_particles_in_latitude_band_continuous(
+        pro_obj,
+        num_particles=160,
+        emission_radius=0.75,
+        emission_speed=0.1,
+        start_frame=1,
+        end_frame=360,
+        #lat_min_deg=-40,
+        #lat_max_deg=40,
+        lat_min_deg=-15,
+        lat_max_deg=15,
+        particle_radius=0.05,
+        frame_interval=2)
+    '''
+    #good_and_bad_di_Hydrogen_fig1() #With (good, good, bad, ...) commentary
+    #good_di_Hydrogens() 
+    #Linear_and_Angular_Motion() # TR is an instance.
+      
+    # These stacks are intended to fill a 12x12 array    
+    #build_all_stacks(example_stacks, spacing=7)
+    #place_text_labels(example_stacks, cell_size=7)     
+      
+    #build_all_stacks(all_stacks, spacing=10)
+    #place_text_labels(all_stacks)     
+    
+    #build_all_stacks(four_stacks, spacing=8)
+    #build_all_stacks(three_ep_stacks, spacing=8)
+    #place_text_labels(four_ep_stacks, cell_size=8) 
+    
+    '''
+    build_atom("H", loc_x=-45.0, loc_y=-20.0, loc_z=0.0,  scale=10.0)       
+    build_atom("He", loc_x=-35.0, loc_y=-20.0, loc_z=0.0,  scale=10.0)     
+    build_atom("Li", loc_x=-25.0, loc_y=-20.0, loc_z=0.0,  scale=10.0)     
+    build_atom("Be", loc_x=-10.0, loc_y=-20.0, loc_z=0.0,  scale=10.0)     
+    build_atom("B", loc_x=10.0, loc_y=-20.0, loc_z=0.0,  scale=10.0)     
+    build_atom("C", loc_x=25.0, loc_y=-20.0, loc_z=0.0,  scale=10.0) 
+    build_atom("N", loc_x=40.0, loc_y=-20.0, loc_z=0.0, scale=10.0) 
+    build_atom("O", loc_x=60.0, loc_y=-20.0, loc_z=0.0, scale=10.0) 
+    build_atom("F", loc_x=70.0, loc_y=-20.0, loc_z=0.0, scale=10.0) 
+    build_atom("Ne", loc_x=80.0, loc_y=-20.0, loc_z=0.0, scale=10.0)     
+      
+    build_atom("Na", loc_x=-45.0, loc_y=20.0, loc_z=0.0,  scale=10.0)       
+    build_atom("Mg", loc_x=-35.0, loc_y=20.0, loc_z=0.0,  scale=10.0)     
+    build_atom("Al", loc_x=-25.0, loc_y=20.0, loc_z=0.0,  scale=10.0)     
+    build_atom("Si", loc_x=-10.0, loc_y=20.0, loc_z=0.0,  scale=10.0)     
+    build_atom("P", loc_x=10.0, loc_y=20.0, loc_z=0.0,  scale=10.0)     
+    build_atom("Cl", loc_x=25.0, loc_y=20.0, loc_z=0.0,  scale=10.0) 
+    build_atom("Ar", loc_x=40.0, loc_y=20.0, loc_z=0.0, scale=10.0) 
+    build_atom("K", loc_x=60.0, loc_y=20.0, loc_z=0.0, scale=10.0) 
+    '''
+    return
+
+main()    
+
+#some_cleanup()   # same ReferenceError  when run with main().
+#ReferenceError: StructRNA of type Material has been removed
+
+#if __name__ == "__main__":  # Won't let some_cleanup() work
+#    main()
